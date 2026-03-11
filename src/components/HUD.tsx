@@ -5,6 +5,7 @@ interface Props {
   gamepad: GamepadState
   useKeyboard: boolean
   telemetry: Telemetry
+  invertPitchY: boolean
 }
 
 // ── Artificial Horizon ───────────────────────────────────────────
@@ -103,7 +104,7 @@ function SpeedTape({ speedMs }: { speedMs: number }) {
         <defs>
           <clipPath id="spd-clip"><rect x={0} y={0} width={W} height={H} /></clipPath>
         </defs>
-        <rect x={0} y={0} width={W} height={H} fill="rgba(0,0,0,0.5)" rx={4} />
+        <rect x={0} y={0} width={W} height={H} fill="rgba(0,0,0,0.5)" />
         <g clipPath="url(#spd-clip)">
           {ticks.map(v => {
             const dy = (speedKmh - v) * pxPerKmh
@@ -117,7 +118,7 @@ function SpeedTape({ speedMs }: { speedMs: number }) {
           })}
         </g>
         {/* Current value box */}
-        <rect x={1} y={H / 2 - 9} width={W - 2} height={18} fill="rgba(0,180,255,0.25)" stroke="#0af" strokeWidth={1} rx={2} />
+        <rect x={1} y={H / 2 - 9} width={W - 2} height={18} fill="rgba(0,180,255,0.25)" stroke="#0af" strokeWidth={1} />
         <text x={W / 2} y={H / 2 + 5} fill="#0af" fontSize={11} fontWeight="bold" textAnchor="middle">
           {speedKmh.toFixed(0)}
         </text>
@@ -144,7 +145,7 @@ function AltTape({ altAgl, altAsl }: { altAgl: number; altAsl: number }) {
         <defs>
           <clipPath id="alt-clip"><rect x={0} y={0} width={W} height={H} /></clipPath>
         </defs>
-        <rect x={0} y={0} width={W} height={H} fill="rgba(0,0,0,0.5)" rx={4} />
+        <rect x={0} y={0} width={W} height={H} fill="rgba(0,0,0,0.5)" />
         <g clipPath="url(#alt-clip)">
           {ticks.map(v => {
             const dy = (altAgl - v) * pxPerM
@@ -157,13 +158,13 @@ function AltTape({ altAgl, altAsl }: { altAgl: number; altAsl: number }) {
             )
           })}
         </g>
-        <rect x={1} y={H / 2 - 9} width={W - 2} height={18} fill="rgba(100,255,100,0.2)" stroke="#4f4" strokeWidth={1} rx={2} />
+        <rect x={1} y={H / 2 - 9} width={W - 2} height={18} fill="rgba(100,255,100,0.2)" stroke="#4f4" strokeWidth={1} />
         <text x={W / 2} y={H / 2 + 5} fill="#4f4" fontSize={11} fontWeight="bold" textAnchor="middle">
           {altAgl.toFixed(1)}
         </text>
       </svg>
       <span style={{ fontSize: 9, color: '#aaa', letterSpacing: 1 }}>AGL m</span>
-      <div style={{ fontSize: 10, color: '#8af', background: 'rgba(0,0,0,0.45)', borderRadius: 4, padding: '1px 6px', marginTop: 2 }}>
+      <div style={{ fontSize: 10, color: '#8af', background: 'rgba(0,0,0,0.45)', padding: '1px 6px', marginTop: 2 }}>
         ASL {altAsl.toFixed(0)} m
       </div>
     </div>
@@ -172,9 +173,9 @@ function AltTape({ altAgl, altAsl }: { altAgl: number; altAsl: number }) {
 
 // ── Compass strip ────────────────────────────────────────────────
 function Compass({ yaw }: { yaw: number }) {
-  const W = 220
+  const W = 500
   const H = 28
-  const pxPerDeg = 2.2
+  const pxPerDeg = 2
   const dirs: [number, string][] = [[0, 'N'], [45, 'NE'], [90, 'E'], [135, 'SE'],
   [180, 'S'], [225, 'SW'], [270, 'W'], [315, 'NW'], [360, 'N']]
 
@@ -182,15 +183,15 @@ function Compass({ yaw }: { yaw: number }) {
   for (let d = 0; d < 360; d += 10) ticks.push(d)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <svg width={W} height={H} style={{ display: 'block' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '50vw' }}>
+      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block' }}>
         <defs>
           <clipPath id="cmp-clip"><rect x={0} y={0} width={W} height={H} /></clipPath>
         </defs>
-        <rect x={0} y={0} width={W} height={H} fill="rgba(0,0,0,0.5)" rx={4} />
+        <rect x={0} y={0} width={W} height={H} fill="rgba(0,0,0,0.5)" />
         <g clipPath="url(#cmp-clip)">
           {ticks.map(d => {
-            let delta = d - yaw
+            let delta = yaw - d
             while (delta > 180) delta -= 360
             while (delta < -180) delta += 360
             const x = W / 2 + delta * pxPerDeg
@@ -202,7 +203,7 @@ function Compass({ yaw }: { yaw: number }) {
             )
           })}
           {dirs.map(([d, label]) => {
-            let delta = d - yaw
+            let delta = yaw - d
             while (delta > 180) delta -= 360
             while (delta < -180) delta += 360
             const x = W / 2 + delta * pxPerDeg
@@ -244,11 +245,14 @@ function StickViz({ x, y, label }: { x: number; y: number; label: string }) {
 }
 
 // ── Main HUD ─────────────────────────────────────────────────────
-export function HUD({ gamepad, useKeyboard, telemetry }: Props) {
+export function HUD({ gamepad, useKeyboard, telemetry, invertPitchY }: Props) {
   const { roll, pitch, yaw, speedMs, altAgl, altAsl, throttle } = telemetry
+  const displayPitchStickY = invertPitchY ? -gamepad.rightY : gamepad.rightY
+  const isHeightLimitExceeded = altAgl > 120
 
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', fontFamily: 'monospace' }}>
+      <style>{`@keyframes hud-blink-red { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.15; } }`}</style>
 
       {/* ── Full-screen SVG overlay for nose line + horizon line ── */}
       {/* viewBox 0 0 1000 600: screen center is 500,300 */}
@@ -257,13 +261,13 @@ export function HUD({ gamepad, useKeyboard, telemetry }: Props) {
         viewBox="0 0 1000 600"
         preserveAspectRatio="xMidYMid meet"
       >
-        {/* Nose direction line — dashed vertical above crosshair */}
+        {/* Nose direction line - dashed vertical above crosshair */}
         <line
           x1="500" y1="220" x2="500" y2="292"
           stroke="#0f0" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.9"
         />
 
-        {/* World horizon line — centered at 500,300, shifted by pitch, rotated by roll */}
+        {/* World horizon line - centered at 500,300, shifted by pitch, rotated by roll */}
         {/* pitchOffset: 4 px per degree (in viewBox units) */}
         <g transform={`translate(500, ${300 + pitch * 6}) rotate(${roll}, 0, ${-pitch * 6})`}>
           <line x1="-380" y1="0" x2="-70" y2="0" stroke="#ff0" strokeWidth="1.5" opacity="0.8" />
@@ -286,11 +290,31 @@ export function HUD({ gamepad, useKeyboard, telemetry }: Props) {
         </svg>
       </div>
 
+      {isHeightLimitExceeded && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '58%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            color: '#ff1a1a',
+            fontSize: 14,
+            fontWeight: 'bold',
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            animation: 'hud-blink-red 0.8s linear infinite',
+            textShadow: '0 0 8px rgba(255,0,0,0.6)',
+          }}
+        >
+          EXCEEDS HEIGHT LIMIT
+        </div>
+      )}
+
       {/* Top status bar */}
       <div style={{
-        position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+        position: 'absolute', top: 50, left: '50%', transform: 'translateX(-50%)',
         display: 'flex', gap: 20, alignItems: 'center',
-        background: 'rgba(0,0,0,0.45)', borderRadius: 8, padding: '4px 14px',
+        background: 'rgba(0,0,0,0.45)', padding: '4px 14px',
         color: '#e0e0e0', fontSize: 13, letterSpacing: 1,
       }}>
         <span style={{ color: '#f44', fontWeight: 'bold' }}>● REC</span>
@@ -300,8 +324,8 @@ export function HUD({ gamepad, useKeyboard, telemetry }: Props) {
         </span>
       </div>
 
-      {/* Compass — top center below status */}
-      <div style={{ position: 'absolute', top: 50, left: '50%', transform: 'translateX(-50%)' }}>
+      {/* Compass — top center above status */}
+      <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)' }}>
         <Compass yaw={yaw} />
       </div>
 
@@ -322,15 +346,17 @@ export function HUD({ gamepad, useKeyboard, telemetry }: Props) {
         <AltTape altAgl={altAgl} altAsl={altAsl} />
         {/* Throttle bar */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-          <div style={{ width: 12, height: 60, background: 'rgba(0,0,0,0.4)', borderRadius: 4, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ width: 12, height: 60, background: 'rgba(0,0,0,0.4)', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: '#666' }} />
             <div style={{
-              position: 'absolute', bottom: 0, left: 0, right: 0,
-              height: `${throttle * 100}%`,
-              background: throttle > 0.8 ? '#f44' : '#ff9800',
-              borderRadius: 4,
+              position: 'absolute', left: 0, right: 0,
+              bottom: throttle >= 0 ? '50%' : undefined,
+              top: throttle < 0 ? '50%' : undefined,
+              height: `${Math.abs(throttle) * 50}%`,
+              background: throttle >= 0 ? (throttle > 0.8 ? '#f44' : '#ff9800') : '#40c4ff',
             }} />
           </div>
-          <span style={{ fontSize: 9, color: '#aaa' }}>THR</span>
+          <span style={{ fontSize: 9, color: '#aaa' }}>THR {throttle.toFixed(2)}</span>
         </div>
       </div>
 
@@ -338,7 +364,7 @@ export function HUD({ gamepad, useKeyboard, telemetry }: Props) {
       <div style={{
         position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
         display: 'flex', gap: 16, alignItems: 'flex-end',
-        background: 'rgba(0,0,0,0.55)', borderRadius: 12, padding: '8px 16px',
+        background: 'rgba(0,0,0,0.55)', padding: '8px 16px',
       }}>
         <StickViz x={gamepad.leftX} y={gamepad.leftY} label="YAW/THR" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', fontSize: 10, color: '#ccc', minWidth: 70 }}>
@@ -346,17 +372,17 @@ export function HUD({ gamepad, useKeyboard, telemetry }: Props) {
           <div>P <span style={{ color: '#0af' }}>{pitch.toFixed(1)}°</span></div>
           <div>Y <span style={{ color: '#fa0' }}>{yaw.toFixed(0)}°</span></div>
         </div>
-        <StickViz x={gamepad.rightX} y={gamepad.rightY} label="ROLL/PITCH" />
+        <StickViz x={gamepad.rightX} y={displayPitchStickY} label="ROLL/PITCH" />
       </div>
 
       {/* Keyboard hint */}
       {!gamepad.connected && (
         <div style={{
           position: 'absolute', bottom: 130, left: '50%', transform: 'translateX(-50%)',
-          background: 'rgba(0,0,0,0.55)', borderRadius: 8, padding: '5px 12px',
+          background: 'rgba(0,0,0,0.55)', padding: '5px 12px',
           color: '#bbb', fontSize: 11, whiteSpace: 'nowrap', textAlign: 'center',
         }}>
-          W/S — Throttle &nbsp;|&nbsp; A/D — Yaw &nbsp;|&nbsp; Num4/6 — Roll &nbsp;|&nbsp; Num8/5 — Pitch
+          W/S - 油门 &nbsp;|&nbsp; A/D - 偏航 &nbsp;|&nbsp; Num4/6 - 横滚 &nbsp;|&nbsp; Num8/5 - 俯仰 &nbsp;|&nbsp; R - 重置
         </div>
       )}
     </div>
