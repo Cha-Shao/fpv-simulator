@@ -6,6 +6,8 @@ interface Props {
   useKeyboard: boolean
   telemetry: Telemetry
   invertPitchY: boolean
+  camTiltDeg: number
+  showHorizonLines: boolean
 }
 
 // ── Artificial Horizon ───────────────────────────────────────────
@@ -36,7 +38,7 @@ function AttitudeIndicator({ roll, pitch }: { roll: number; pitch: number }) {
         <circle cx={CX} cy={CY} r={R} fill="none" stroke="#555" strokeWidth={2} />
 
         {/* Rotating attitude group */}
-        <g transform={`rotate(${-roll}, ${CX}, ${CY})`} clipPath="url(#ai-clip)">
+        <g transform={`rotate(${roll}, ${CX}, ${CY})`} clipPath="url(#ai-clip)">
           {/* Sky */}
           <rect x={0} y={0} width={SIZE} height={CY - pitchOffset} fill={skyColor} />
           {/* Ground */}
@@ -76,7 +78,7 @@ function AttitudeIndicator({ roll, pitch }: { roll: number; pitch: number }) {
           )
         })}
         {/* Roll pointer */}
-        <g transform={`rotate(${-roll}, ${CX}, ${CY})`}>
+        <g transform={`rotate(${roll}, ${CX}, ${CY})`}>
           <polygon points={`${CX},${CY - R + 2} ${CX - 4},${CY - R + 9} ${CX + 4},${CY - R + 9}`} fill="#ff0" />
         </g>
       </svg>
@@ -245,10 +247,11 @@ function StickViz({ x, y, label }: { x: number; y: number; label: string }) {
 }
 
 // ── Main HUD ─────────────────────────────────────────────────────
-export function HUD({ gamepad, useKeyboard, telemetry, invertPitchY }: Props) {
+export function HUD({ gamepad, useKeyboard, telemetry, invertPitchY, camTiltDeg, showHorizonLines }: Props) {
   const { roll, pitch, yaw, speedMs, altAgl, altAsl, throttle } = telemetry
   const displayPitchStickY = invertPitchY ? -gamepad.rightY : gamepad.rightY
   const isHeightLimitExceeded = altAgl > 120
+  const horizonOffsetY = camTiltDeg * 6
 
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', fontFamily: 'monospace' }}>
@@ -261,34 +264,27 @@ export function HUD({ gamepad, useKeyboard, telemetry, invertPitchY }: Props) {
         viewBox="0 0 1000 600"
         preserveAspectRatio="xMidYMid meet"
       >
-        {/* Nose direction line - dashed vertical above crosshair */}
-        <line
-          x1="500" y1="220" x2="500" y2="292"
-          stroke="#0f0" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.9"
-        />
+        {showHorizonLines && (
+          <>
+            {/* Aircraft-fixed reference horizon (white dashed). */}
+            <line
+              x1="350" y1={`${300 + horizonOffsetY}`} x2="650" y2={`${300 + horizonOffsetY}`}
+              stroke="#fff" strokeWidth="1.5" strokeDasharray="8,6" opacity="0.9"
+            />
 
-        {/* World horizon line - centered at 500,300, shifted by pitch, rotated by roll */}
-        {/* pitchOffset: 4 px per degree (in viewBox units) */}
-        <g transform={`translate(500, ${300 + pitch * 6}) rotate(${roll}, 0, ${-pitch * 6})`}>
-          <line x1="-380" y1="0" x2="-70" y2="0" stroke="#ff0" strokeWidth="1.5" opacity="0.8" />
-          <line x1=" 70" y1="0" x2=" 380" y2="0" stroke="#ff0" strokeWidth="1.5" opacity="0.8" />
-          {/* Left end tick */}
-          <line x1="-380" y1="-6" x2="-380" y2="6" stroke="#ff0" strokeWidth="1.5" opacity="0.8" />
-          {/* Right end tick */}
-          <line x1=" 380" y1="-6" x2=" 380" y2="6" stroke="#ff0" strokeWidth="1.5" opacity="0.8" />
-        </g>
+            {/* World horizon line with camera tilt offset: aligns to true ground horizon. */}
+            <g transform={`translate(500, ${300 + horizonOffsetY + pitch * 6}) rotate(${roll}, 0, ${-pitch * 6})`}>
+              <line x1="-380" y1="0" x2="-70" y2="0" stroke="#ff0" strokeWidth="1.5" opacity="0.8" />
+              <line x1=" 70" y1="0" x2=" 380" y2="0" stroke="#ff0" strokeWidth="1.5" opacity="0.8" />
+              {/* Left end tick */}
+              <line x1="-380" y1="-6" x2="-380" y2="6" stroke="#ff0" strokeWidth="1.5" opacity="0.8" />
+              {/* Right end tick */}
+              <line x1=" 380" y1="-6" x2=" 380" y2="6" stroke="#ff0" strokeWidth="1.5" opacity="0.8" />
+            </g>
+          </>
+        )}
       </svg>
 
-      {/* Center crosshair */}
-      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
-        <svg width={20} height={20}>
-          <line x1={10} y1={0} x2={10} y2={6} stroke="#0f0" strokeWidth={1.5} />
-          <line x1={10} y1={14} x2={10} y2={20} stroke="#0f0" strokeWidth={1.5} />
-          <line x1={0} y1={10} x2={6} y2={10} stroke="#0f0" strokeWidth={1.5} />
-          <line x1={14} y1={10} x2={20} y2={10} stroke="#0f0" strokeWidth={1.5} />
-          <circle cx={10} cy={10} r={1.5} fill="#0f0" />
-        </svg>
-      </div>
 
       {isHeightLimitExceeded && (
         <div

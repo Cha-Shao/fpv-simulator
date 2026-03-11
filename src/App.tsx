@@ -14,6 +14,8 @@ function App() {
   const gamepad = useGamepad()
   const [useKeyboard] = useState(true)
   const [invertPitchY, setInvertPitchY] = useState(false)
+  const [showHorizonLines, setShowHorizonLines] = useState(true)
+  const [showSelfieCam, setShowSelfieCam] = useState(false)
   const levelRequestRef = useRef<number>(0)
   const [camTiltDeg, setCamTiltDeg] = useState(20)
   const camTiltRef = useRef<number>(20)
@@ -49,12 +51,13 @@ function App() {
         gamepad={gamepad}
         useKeyboard={useKeyboard}
         invertPitchY={invertPitchY}
+        showSelfieCam={showSelfieCam}
         levelRequestRef={levelRequestRef}
         keyboardRef={keyboardRef}
         telemetryRef={telemetryRef}
         camTiltRef={camTiltRef}
       />
-      <HUD gamepad={gamepad} useKeyboard={useKeyboard} telemetry={telemetry} invertPitchY={invertPitchY} />
+      <HUD gamepad={gamepad} useKeyboard={useKeyboard} telemetry={telemetry} invertPitchY={invertPitchY} camTiltDeg={camTiltDeg} showHorizonLines={showHorizonLines} />
 
       {/* Camera tilt slider */}
       <div style={{
@@ -70,6 +73,22 @@ function App() {
             onChange={e => setInvertPitchY(e.target.checked)}
           />
           反转y轴
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, pointerEvents: 'all' }}>
+          <input
+            type="checkbox"
+            checked={showHorizonLines}
+            onChange={e => setShowHorizonLines(e.target.checked)}
+          />
+          地平线显示
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, pointerEvents: 'all' }}>
+          <input
+            type="checkbox"
+            checked={showSelfieCam}
+            onChange={e => setShowSelfieCam(e.target.checked)}
+          />
+          自拍杆相机
         </label>
         <button
           type="button"

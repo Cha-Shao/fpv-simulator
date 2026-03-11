@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { GamepadState } from '../hooks/useGamepad'
 
 const MASS = 0.6
@@ -9,7 +10,7 @@ const MAX_THRUST = MASS * 9.81 * 5
 const MAX_REVERSE_THRUST = MASS * 9.81 * 1.1
 const T_ROLL = .3
 const T_PITCH = .3
-const T_YAW = .3
+const T_YAW = .2
 
 export interface Telemetry {
   roll: number
@@ -25,6 +26,7 @@ interface Props {
   gamepad: GamepadState
   useKeyboard: boolean
   invertPitchY: boolean
+  showSelfieCam: boolean
   levelRequestRef: React.MutableRefObject<number>
   keyboardRef: React.RefObject<Record<string, boolean>>
   telemetryRef: React.RefObject<Telemetry>
@@ -39,7 +41,7 @@ interface BuildingDef {
   d: number
 }
 
-export function FPVScene({ gamepad, useKeyboard, invertPitchY, levelRequestRef, keyboardRef, telemetryRef, camTiltRef }: Props) {
+export function FPVScene({ gamepad, useKeyboard, invertPitchY, showSelfieCam, levelRequestRef, keyboardRef, telemetryRef, camTiltRef }: Props) {
   const mountRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -55,11 +57,48 @@ export function FPVScene({ gamepad, useKeyboard, invertPitchY, levelRequestRef, 
     mount.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x87ceeb)
-    scene.fog = new THREE.Fog(0x87ceeb, 80, 300)
+    const DAY_SKY_COLOR = new THREE.Color(0x87ceeb)
+    const SPACE_SKY_COLOR = new THREE.Color(0x060912)
+    scene.background = DAY_SKY_COLOR.clone()
+    scene.fog = new THREE.Fog(DAY_SKY_COLOR.clone(), 80, 300)
+
+    const SPACE_TRANSITION_ALTITUDE = 260
+    const SPACE_TRANSITION_DURATION = 4
+    let spaceBlend = 0
+    const bgColor = new THREE.Color().copy(DAY_SKY_COLOR)
+
+    const universeRoot = new THREE.Group()
+    universeRoot.visible = false
+    scene.add(universeRoot)
+    const universeMaterials: THREE.Material[] = []
+
+    const loader = new GLTFLoader()
+    loader.load(
+      // https://sketchfab.com/3d-models/free-skybox-space-nebula-fa5c19c4f7cc4525a24b99425bd520c8
+      '/assets/universe.glb',
+      gltf => {
+        universeRoot.add(gltf.scene)
+        gltf.scene.traverse(obj => {
+          const mesh = obj as THREE.Mesh
+          if (!mesh.isMesh || !mesh.material) return
+          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+          for (const mat of materials) {
+            mat.transparent = true
+            mat.opacity = 0
+            mat.depthWrite = false
+            universeMaterials.push(mat)
+          }
+        })
+      },
+      undefined,
+      () => {
+        // Keep daytime sky if the skybox asset is missing or fails to load.
+      }
+    )
 
     const camera = new THREE.PerspectiveCamera(90, w / h, 0.05, 500)
     camera.position.set(0, 0, 0)
+    const selfieCamera = new THREE.PerspectiveCamera(70, 1, 0.05, 500)
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.6)
     scene.add(ambient)
@@ -160,8 +199,25 @@ export function FPVScene({ gamepad, useKeyboard, invertPitchY, levelRequestRef, 
       droneNode.add(m)
     }
 
-    droneNode.add(camera)
-    camera.position.set(0, 0.04, 0.06)
+    const cameraMount = new THREE.Object3D()
+    cameraMount.position.set(0, 0.07, -0.16)
+    droneNode.add(cameraMount)
+
+    const cameraBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.05, 0.08),
+      new THREE.MeshLambertMaterial({ color: 0xcc2222 })
+    )
+    cameraBody.castShadow = true
+    cameraMount.add(cameraBody)
+
+    cameraMount.add(camera)
+    // Keep FPV camera mounted at the cube edge/interior so the body stays out of the main view.
+    camera.position.set(0, 0, 0.038)
+
+    // Selfie cam is rigidly mounted to the drone frame.
+    selfieCamera.position.set(-2.12, 1.73, 2.12) // left-front 45deg, elevation 30deg
+    selfieCamera.lookAt(0, 0, 0)
+    droneNode.add(selfieCamera)
 
     const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.81, 0) })
     if (world.solver instanceof CANNON.GSSolver) {
@@ -263,7 +319,7 @@ export function FPVScene({ gamepad, useKeyboard, invertPitchY, levelRequestRef, 
       if (useKeyboard && keyboardRef.current) {
         const kb = keyboardRef.current
         if (kb['KeyW']) throttleCmd = Math.min(1, throttleCmd + 0.8)
-        if (kb['KeyS']) throttleCmd = Math.max(0, throttleCmd - 0.8)
+        if (kb['KeyS']) throttleCmd = Math.max(-1, throttleCmd - 0.8)
         if (kb['KeyA']) yawCmd = -1
         if (kb['KeyD']) yawCmd = 1
         if (kb['Numpad4']) rollCmd = -1
@@ -321,6 +377,30 @@ export function FPVScene({ gamepad, useKeyboard, invertPitchY, levelRequestRef, 
       }
       const altAgl = Math.max(0, minCornerY)
 
+      const targetBlend = altAgl >= SPACE_TRANSITION_ALTITUDE ? 1 : 0
+      const blendStep = dt / SPACE_TRANSITION_DURATION
+      if (targetBlend > spaceBlend) {
+        spaceBlend = Math.min(targetBlend, spaceBlend + blendStep)
+      } else if (targetBlend < spaceBlend) {
+        spaceBlend = Math.max(targetBlend, spaceBlend - blendStep)
+      }
+
+      bgColor.copy(DAY_SKY_COLOR).lerp(SPACE_SKY_COLOR, spaceBlend)
+      scene.background = bgColor
+      if (scene.fog instanceof THREE.Fog) {
+        scene.fog.color.copy(bgColor)
+        scene.fog.near = THREE.MathUtils.lerp(80, 500, spaceBlend)
+        scene.fog.far = THREE.MathUtils.lerp(300, 5000, spaceBlend)
+      }
+      ambient.intensity = THREE.MathUtils.lerp(0.6, 0.2, spaceBlend)
+      sun.intensity = THREE.MathUtils.lerp(1.2, 0.15, spaceBlend)
+
+      universeRoot.visible = spaceBlend > 0.001
+      universeRoot.position.set(droneBody.position.x, droneBody.position.y, droneBody.position.z)
+      for (const mat of universeMaterials) {
+        mat.opacity = spaceBlend
+      }
+
       euler.setFromQuaternion(droneNode.quaternion, 'YXZ')
       if (telemetryRef.current) {
         telemetryRef.current.roll = THREE.MathUtils.radToDeg(euler.z)
@@ -332,8 +412,25 @@ export function FPVScene({ gamepad, useKeyboard, invertPitchY, levelRequestRef, 
         telemetryRef.current.throttle = throttle
       }
 
-      camera.rotation.x = THREE.MathUtils.degToRad(camTiltRef.current ?? 20)
+      cameraMount.rotation.x = THREE.MathUtils.degToRad(camTiltRef.current ?? 20)
+      renderer.setViewport(0, 0, mount.clientWidth, mount.clientHeight)
+      renderer.setScissorTest(false)
       renderer.render(scene, camera)
+
+      if (showSelfieCam) {
+        const pipW = Math.floor(mount.clientWidth * 0.28)
+        const pipH = Math.floor(pipW * 0.62)
+        const pipX = 16
+        const pipY = mount.clientHeight - pipH - 16
+
+        renderer.clearDepth()
+        renderer.setScissorTest(true)
+        renderer.setViewport(pipX, pipY, pipW, pipH)
+        renderer.setScissor(pipX, pipY, pipW, pipH)
+        selfieCamera.aspect = pipW / pipH
+        selfieCamera.updateProjectionMatrix()
+        renderer.render(scene, selfieCamera)
+      }
     }
 
     animate()
@@ -355,7 +452,7 @@ export function FPVScene({ gamepad, useKeyboard, invertPitchY, levelRequestRef, 
       mount.removeChild(renderer.domElement)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gamepad, useKeyboard, invertPitchY, levelRequestRef])
+  }, [gamepad, useKeyboard, invertPitchY, showSelfieCam, levelRequestRef])
 
   return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
 }
